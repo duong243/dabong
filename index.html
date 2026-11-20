@@ -1,0 +1,543 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>⚽ 3D Football Online</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#111; font-family:sans-serif; }
+  canvas { display:block; }
+  
+  #ui {
+    position:fixed; top:10px; left:50%; transform:translateX(-50%);
+    color:#fff; font-size:20px; font-weight:bold;
+    background:rgba(0,0,0,0.5); padding:8px 20px; border-radius:20px;
+    text-shadow:1px 1px 3px #000; z-index:10;
+  }
+  
+  /* Mobile controls */
+  #joystick {
+    position:fixed; bottom:30px; left:30px;
+    width:140px; height:140px;
+    background:rgba(255,255,255,0.15);
+    border:2px solid rgba(255,255,255,0.4);
+    border-radius:50%;
+    touch-action:none;
+    display:none;
+  }
+  #stick {
+    position:absolute; top:50%; left:50%;
+    width:60px; height:60px; margin:-30px 0 0 -30px;
+    background:rgba(255,255,255,0.7);
+    border-radius:50%;
+  }
+  
+  #actions {
+    position:fixed; bottom:30px; right:30px;
+    display:none; gap:12px;
+    flex-direction:column;
+  }
+  .btn {
+    width:80px; height:80px;
+    border-radius:50%;
+    background:rgba(0,150,255,0.6);
+    border:2px solid rgba(255,255,255,0.7);
+    color:#fff; font-size:14px; font-weight:bold;
+    touch-action:none;
+  }
+  .btn:active { background:rgba(0,200,255,0.9); transform:scale(0.95); }
+  #kickBtn { background:rgba(255,80,80,0.6); }
+  #kickBtn:active { background:rgba(255,120,120,0.9); }
+  
+  /* Desktop hint */
+  #hint {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    color:#aaa; font-size:13px; text-align:center;
+  }
+  
+  /* Loading */
+  #loading {
+    position:fixed; inset:0; background:#111; color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:24px; z-index:100;
+  }
+  
+  @media (max-width: 768px) {
+    #joystick, #actions { display:block; }
+    #joystick { display:block; }
+    #actions { display:flex; }
+    #hint { display:none; }
+    #ui { font-size:16px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">Đang tải sân bóng...</div>
+<div id="ui">⚽ 0 - 0</div>
+
+<div id="joystick"><div id="stick"></div></div>
+<div id="actions">
+  <button class="btn" id="kickBtn">SÚT</button>
+  <button class="btn" id="jumpBtn">NHẢY</button>
+</div>
+
+<div id="hint">WASD / Mũi tên để di chuyển · SPACE để sút · SHIFT để chạy nhanh</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// ============ SCENE ============
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 60, 120);
+
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 500);
+camera.position.set(0, 18, 22);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// ============ LIGHTS ============
+const hemi = new THREE.HemisphereLight(0xffffff, 0x446644, 0.9);
+scene.add(hemi);
+
+const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+sun.position.set(20, 40, 20);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -40;
+sun.shadow.camera.right = 40;
+sun.shadow.camera.top = 40;
+sun.shadow.camera.bottom = -40;
+scene.add(sun);
+
+// ============ FIELD ============
+const FIELD_W = 44;  // chiều rộng (X)
+const FIELD_H = 60;  // chiều dài (Z)
+
+// Cỏ
+const grassGeo = new THREE.PlaneGeometry(FIELD_W, FIELD_H);
+const grassMat = new THREE.MeshLambertMaterial({ color: 0x3a9d3a });
+const grass = new THREE.Mesh(grassGeo, grassMat);
+grass.rotation.x = -Math.PI/2;
+grass.receiveShadow = true;
+scene.add(grass);
+
+// Sọc cỏ xen kẽ
+for (let i = 0; i < 12; i++) {
+  if (i % 2 === 0) continue;
+  const stripe = new THREE.Mesh(
+    new THREE.PlaneGeometry(FIELD_W, FIELD_H/12),
+    new THREE.MeshLambertMaterial({ color: 0x2e8a2e })
+  );
+  stripe.rotation.x = -Math.PI/2;
+  stripe.position.z = -FIELD_H/2 + (i + 0.5) * (FIELD_H/12);
+  stripe.position.y = 0.01;
+  stripe.receiveShadow = true;
+  scene.add(stripe);
+}
+
+// Đường kẻ
+const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+function addLine(w, h, x, z) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), lineMat);
+  m.rotation.x = -Math.PI/2;
+  m.position.set(x, 0.02, z);
+  scene.add(m);
+}
+addLine(FIELD_W, 0.2, 0, -FIELD_H/2);       // biên trên
+addLine(FIELD_W, 0.2, 0,  FIELD_H/2);       // biên dưới
+addLine(0.2, FIELD_H, -FIELD_W/2, 0);       // biên trái
+addLine(0.2, FIELD_H,  FIELD_W/2, 0);       // biên phải
+addLine(FIELD_W, 0.2, 0, 0);                // đường giữa
+// Vòng tròn giữa
+const circleGeo = new THREE.RingGeometry(5.5, 5.7, 48);
+const circle = new THREE.Mesh(circleGeo, lineMat);
+circle.rotation.x = -Math.PI/2;
+circle.position.y = 0.02;
+scene.add(circle);
+
+// Khung thành
+function makeGoal(z, color) {
+  const g = new THREE.Group();
+  const postMat = new THREE.MeshLambertMaterial({ color });
+  const depth = 2.5, width = 10, height = 3;
+  
+  const barGeo = new THREE.CylinderGeometry(0.15, 0.15, height, 8);
+  
+  const left = new THREE.Mesh(barGeo, postMat);
+  left.position.set(-width/2, height/2, 0);
+  g.add(left);
+  
+  const right = new THREE.Mesh(barGeo, postMat);
+  right.position.set(width/2, height/2, 0);
+  g.add(right);
+  
+  const crossGeo = new THREE.CylinderGeometry(0.15, 0.15, width, 8);
+  const cross = new THREE.Mesh(crossGeo, postMat);
+  cross.rotation.z = Math.PI/2;
+  cross.position.set(0, height, 0);
+  g.add(cross);
+  
+  // Lưới (đơn giản - mặt phẳng trong suốt)
+  const netMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent:true, opacity:0.15, side: THREE.DoubleSide });
+  const netBack = new THREE.Mesh(new THREE.PlaneGeometry(width, height), netMat);
+  netBack.position.set(0, height/2, z < 0 ? -depth : depth);
+  g.add(netBack);
+  
+  g.position.set(0, 0, z);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  scene.add(g);
+  return g;
+}
+makeGoal(-FIELD_H/2 + 0.5, 0xff4444);  // khung đỏ (đối thủ ghi bàn)
+makeGoal( FIELD_H/2 - 0.5, 0x4444ff);  // khung xanh (bạn ghi bàn)
+
+// ============ BALL ============
+const ballRadius = 0.6;
+const ball = new THREE.Mesh(
+  new THREE.SphereGeometry(ballRadius, 24, 24),
+  new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 })
+);
+ball.castShadow = true;
+ball.position.set(0, ballRadius, 0);
+scene.add(ball);
+
+// họa tiết bóng
+for (let i = 0; i < 12; i++) {
+  const patch = new THREE.Mesh(
+    new THREE.SphereGeometry(ballRadius * 1.01, 8, 8, i*0.5, 0.5, i*0.5, 0.5),
+    new THREE.MeshStandardMaterial({ color: 0x222222 })
+  );
+  ball.add(patch);
+}
+
+const ballVel = new THREE.Vector3(0, 0, 0);
+const ballSpin = new THREE.Vector3();
+
+// ============ PLAYERS ============
+function createPlayer(color) {
+  const g = new THREE.Group();
+  // body
+  const body = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.5, 1.0, 4, 12),
+    new THREE.MeshStandardMaterial({ color })
+  );
+  body.position.y = 1.3;
+  body.castShadow = true;
+  g.add(body);
+  // head
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.4, 16, 16),
+    new THREE.MeshStandardMaterial({ color: 0xffcc99 })
+  );
+  head.position.y = 2.5;
+  head.castShadow = true;
+  g.add(head);
+  // legs
+  const legMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+  const legGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.9, 8);
+  const l1 = new THREE.Mesh(legGeo, legMat);
+  l1.position.set(-0.2, 0.45, 0);
+  l1.castShadow = true;
+  g.add(l1);
+  const l2 = new THREE.Mesh(legGeo, legMat);
+  l2.position.set(0.2, 0.45, 0);
+  l2.castShadow = true;
+  g.add(l2);
+  return g;
+}
+
+const player = createPlayer(0x3366ff);
+player.position.set(0, 0, 8);
+scene.add(player);
+
+// 3 đối thủ AI
+const aiPlayers = [];
+const aiPositions = [[-10, -10], [10, -10], [0, -20]];
+for (let i = 0; i < 3; i++) {
+  const ai = createPlayer(0xff3333);
+  ai.position.set(aiPositions[i][0], 0, aiPositions[i][1]);
+  scene.add(ai);
+  aiPlayers.push(ai);
+}
+
+// ============ INPUT ============
+const keys = {};
+addEventListener('keydown', e => keys[e.code] = true);
+addEventListener('keyup', e => keys[e.code] = false);
+
+// Joystick mobile
+const joyEl = document.getElementById('joystick');
+const stickEl = document.getElementById('stick');
+let joyActive = false, joyX = 0, joyY = 0;
+let joyId = null;
+
+function joyStart(e) {
+  const t = e.changedTouches ? e.changedTouches[0] : e;
+  joyId = t.identifier ?? 'mouse';
+  joyActive = true;
+  joyMove(e);
+  e.preventDefault();
+}
+function joyMove(e) {
+  if (!joyActive) return;
+  let t = e.changedTouches ? Array.from(e.changedTouches).find(tt => tt.identifier === joyId) : e;
+  if (!t) return;
+  const r = joyEl.getBoundingClientRect();
+  let dx = t.clientX - (r.left + r.width/2);
+  let dy = t.clientY - (r.top + r.height/2);
+  const max = r.width/2;
+  const dist = Math.hypot(dx, dy);
+  if (dist > max) { dx = dx/dist*max; dy = dy/dist*max; }
+  joyX = dx / max;
+  joyY = dy / max;
+  stickEl.style.transform = `translate(${dx}px, ${dy}px)`;
+  e.preventDefault();
+}
+function joyEnd(e) {
+  joyActive = false; joyX = 0; joyY = 0;
+  stickEl.style.transform = '';
+  e.preventDefault();
+}
+joyEl.addEventListener('touchstart', joyStart, { passive:false });
+joyEl.addEventListener('touchmove', joyMove, { passive:false });
+joyEl.addEventListener('touchend', joyEnd);
+joyEl.addEventListener('touchcancel', joyEnd);
+
+// Nút hành động
+let kickPressed = false, jumpPressed = false;
+const kickBtn = document.getElementById('kickBtn');
+const jumpBtn = document.getElementById('jumpBtn');
+function bindBtn(btn, on, off) {
+  btn.addEventListener('touchstart', e => { on(); e.preventDefault(); }, { passive:false });
+  btn.addEventListener('touchend', e => { off(); e.preventDefault(); });
+  btn.addEventListener('mousedown', e => { on(); e.preventDefault(); });
+  btn.addEventListener('mouseup', e => { off(); });
+  btn.addEventListener('mouseleave', off);
+}
+bindBtn(kickBtn, () => kickPressed = true, () => kickPressed = false);
+bindBtn(jumpBtn, () => jumpPressed = true, () => jumpPressed = false);
+
+// ============ GAME STATE ============
+const playerSpeed = 10;
+const sprintMul = 1.7;
+let scorePlayer = 0, scoreAI = 0;
+let jumpVel = 0, onGround = true;
+let scoreCooldown = 0;
+
+function updateUI() {
+  document.getElementById('ui').textContent = `⚽ ${scorePlayer} - ${scoreAI}`;
+}
+
+// ============ PHYSICS HELPERS ============
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function dist2D(a, b) { return Math.hypot(a.x - b.x, a.z - b.z); }
+
+// ============ GAME LOOP ============
+const clock = new THREE.Clock();
+let kickCooldown = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  // ===== PLAYER MOVEMENT =====
+  let mx = 0, mz = 0;
+  if (keys['KeyW'] || keys['ArrowUp']) mz -= 1;
+  if (keys['KeyS'] || keys['ArrowDown']) mz += 1;
+  if (keys['KeyA'] || keys['ArrowLeft']) mx -= 1;
+  if (keys['KeyD'] || keys['ArrowRight']) mx += 1;
+  mx += joyX;
+  mz += joyY;
+  const mag = Math.hypot(mx, mz);
+  if (mag > 1) { mx /= mag; mz /= mag; }
+
+  const sprint = keys['ShiftLeft'] || keys['ShiftRight'];
+  const speed = playerSpeed * (sprint ? sprintMul : 1);
+  
+  // jump
+  if ((keys['Space'] || jumpPressed) && onGround) {
+    jumpVel = 8;
+    onGround = false;
+  }
+  jumpPressed = false;
+
+  player.position.x += mx * speed * dt;
+  player.position.z += mz * speed * dt;
+  
+  // jump physics
+  jumpVel -= 25 * dt;
+  player.position.y += jumpVel * dt;
+  if (player.position.y <= 0) { player.position.y = 0; jumpVel = 0; onGround = true; }
+
+  // giới hạn sân
+  player.position.x = clamp(player.position.x, -FIELD_W/2 + 1, FIELD_W/2 - 1);
+  player.position.z = clamp(player.position.z, -FIELD_H/2 + 1, FIELD_H/2 - 1);
+  
+  // xoay hướng nhìn
+  if (mag > 0.1) {
+    player.rotation.y = Math.atan2(mx, mz);
+  }
+
+  // ===== BALL PLAYER COLLISION =====
+  const toBall = new THREE.Vector3().subVectors(ball.position, player.position);
+  toBall.y = 0;
+  const dP = toBall.length();
+  const touchDist = 1.4;
+  if (dP < touchDist && dP > 0.01) {
+    toBall.normalize();
+    const pushing = 12 * dt * 60 * 0.5;
+    ballVel.x += toBall.x * pushing;
+    ballVel.z += toBall.z * pushing;
+  }
+  
+  // Sút
+  if (kickCooldown > 0) kickCooldown -= dt;
+  if ((keys['Space'] || kickPressed) && kickCooldown <= 0 && dP < 2.5) {
+    const dir = new THREE.Vector3(Math.sin(player.rotation.y), 0, Math.cos(player.rotation.y));
+    ballVel.x += dir.x * 22;
+    ballVel.z += dir.z * 22;
+    ballVel.y += 3;
+    kickCooldown = 0.4;
+  }
+  kickPressed = false;
+
+  // ===== AI BEHAVIOR =====
+  for (let i = 0; i < aiPlayers.length; i++) {
+    const ai = aiPlayers[i];
+    const ballPos = ball.position;
+    const isClosest = aiPlayers.reduce((acc, p) => 
+      dist2D(p.position, ballPos) < dist2D(acc.position, ballPos) ? p : acc, aiPlayers[0]) === ai;
+    
+    let targetX, targetZ;
+    if (isClosest) {
+      targetX = ballPos.x;
+      targetZ = ballPos.z;
+      // AI sút khi gần bóng
+      if (dist2D(ai.position, ballPos) < 2.0) {
+        const toGoal = new THREE.Vector3(0, 0, -FIELD_H/2).sub(ballPos);
+        toGoal.y = 0; toGoal.normalize();
+        ballVel.x += toGoal.x * 15 * dt * 20;
+        ballVel.z += toGoal.z * 15 * dt * 20;
+      }
+    } else {
+      // Về vị trí phòng ngự
+      targetX = aiPositions[i][0];
+      targetZ = aiPositions[i][1] - 5;
+    }
+    
+    const dx = targetX - ai.position.x;
+    const dz = targetZ - ai.position.z;
+    const dl = Math.hypot(dx, dz);
+    if (dl > 0.5) {
+      const aiSpeed = 6;
+      ai.position.x += (dx/dl) * aiSpeed * dt;
+      ai.position.z += (dz/dl) * aiSpeed * dt;
+      ai.rotation.y = Math.atan2(dx, dz);
+    }
+    // giới hạn
+    ai.position.x = clamp(ai.position.x, -FIELD_W/2 + 1, FIELD_W/2 - 1);
+    ai.position.z = clamp(ai.position.z, -FIELD_H/2 + 1, FIELD_H/2 - 1);
+    
+    // đẩy bóng
+    const toB = new THREE.Vector3().subVectors(ball.position, ai.position); toB.y = 0;
+    const dB = toB.length();
+    if (dB < touchDist && dB > 0.01) {
+      toB.normalize();
+      ballVel.x += toB.x * 3;
+      ballVel.z += toB.z * 3;
+    }
+  }
+
+  // ===== BALL PHYSICS =====
+  ballVel.y -= 20 * dt; // gravity
+  ball.position.x += ballVel.x * dt;
+  ball.position.y += ballVel.y * dt;
+  ball.position.z += ballVel.z * dt;
+  
+  // ma sát nền
+  if (ball.position.y <= ballRadius) {
+    ball.position.y = ballRadius;
+    if (ballVel.y < -1) ballVel.y *= -0.5;
+    else ballVel.y = 0;
+    ballVel.x *= 0.985;
+    ballVel.z *= 0.985;
+  }
+  
+  // giới hạn sân (bóng nảy tường)
+  const bx = FIELD_W/2 - ballRadius;
+  const bz = FIELD_H/2 - ballRadius;
+  if (ball.position.x > bx) { ball.position.x = bx; ballVel.x *= -0.7; }
+  if (ball.position.x < -bx) { ball.position.x = -bx; ballVel.x *= -0.7; }
+  if (ball.position.z > bz) { ball.position.z = bz; ballVel.z *= -0.7; }
+  if (ball.position.z < -bz) { ball.position.z = -bz; ballVel.z *= -0.7; }
+  
+  // xoay bóng theo vận tốc
+  const spd = Math.hypot(ballVel.x, ballVel.z);
+  if (spd > 0.1) {
+    const axis = new THREE.Vector3(ballVel.z, 0, -ballVel.x).normalize();
+    ball.rotateOnWorldAxis(axis, spd * dt / ballRadius * 0.5);
+  }
+
+  // ===== GOAL DETECTION =====
+  if (scoreCooldown > 0) scoreCooldown -= dt;
+  else {
+    // ghi vào khung trên (z âm) → player ghi bàn (khung đỏ)
+    if (ball.position.z < -FIELD_H/2 + 1.5 && Math.abs(ball.position.x) < 5 && ball.position.y < 3.2) {
+      scorePlayer++;
+      updateUI();
+      resetBall(); scoreCooldown = 2;
+    }
+    // ghi vào khung dưới → AI ghi bàn (khung xanh)
+    else if (ball.position.z > FIELD_H/2 - 1.5 && Math.abs(ball.position.x) < 5 && ball.position.y < 3.2) {
+      scoreAI++;
+      updateUI();
+      resetBall(); scoreCooldown = 2;
+    }
+  }
+
+  // ===== CAMERA FOLLOW =====
+  const camTarget = new THREE.Vector3(player.position.x * 0.4, 18, player.position.z + 20);
+  camera.position.lerp(camTarget, 0.05);
+  camera.lookAt(player.position.x * 0.2, 0, player.position.z - 5);
+
+  renderer.render(scene, camera);
+}
+
+function resetBall() {
+  ball.position.set(0, ballRadius, 0);
+  ballVel.set(0, 0, 0);
+  player.position.set(0, 0, 8);
+  aiPositions.forEach((p, i) => aiPlayers[i].position.set(p[0], 0, p[1]));
+}
+
+// ============ RESIZE ============
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ============ START ============
+document.getElementById('loading').style.display = 'none';
+updateUI();
+animate();
+</script>
+</body>
+</html>
