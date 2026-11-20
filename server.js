@@ -1,4 +1,4 @@
-// Thay thế toàn bộ file server.js cũ bằng code này:
+// Tìm và thay thế toàn bộ file server.js bằng code này:
 
 const express = require('express');
 const http = require('http');
@@ -11,8 +11,6 @@ const io = new Server(server, { cors: { origin: '*' } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ============ GAME CONSTANTS ============
-// SÂN TO HƠN (x10 diện tích)
 const FIELD_W = 120; 
 const FIELD_H = 180;
 const BALL_RADIUS = 1.0;
@@ -39,7 +37,8 @@ io.on('connection', (socket) => {
     team: team,
     name: 'Player ' + socket.id.slice(0, 4),
     kickAnim: 0,
-    isRunning: false
+    isRunning: false,
+    isCharging: false // Trạng thái đang lấy đà
   };
 
   socket.emit('init', { id: socket.id, state, fieldW: FIELD_W, fieldH: FIELD_H, ballRadius: BALL_RADIUS });
@@ -48,7 +47,7 @@ io.on('connection', (socket) => {
   socket.on('input', (data) => {
     const p = state.players[socket.id];
     if (!p) return;
-    p.input = { mx: data.mx || 0, mz: data.mz || 0, kick: !!data.kick, sprint: !!data.sprint };
+    p.input = { mx: data.mx || 0, mz: data.mz || 0, kick: !!data.kick, sprint: !!data.sprint, charging: !!data.charging };
   });
 
   socket.on('disconnect', () => {
@@ -72,18 +71,21 @@ setInterval(() => {
 function updatePlayers(dt) {
   const PLAYER_SPEED = 15;
   const SPRINT_MUL = 1.5;
-  const DRIBBLE_DIST = 3.5; // Khoảng cách bóng dính chân
+  const DRIBBLE_DIST = 3.5;
 
   for (const id in state.players) {
     const p = state.players[id];
     if (!p.input) continue;
     
-    const { mx, mz, sprint } = p.input;
+    const { mx, mz, sprint, charging } = p.input;
     const mag = Math.hypot(mx, mz);
     let nx = mx, nz = mz;
     if (mag > 1) { nx /= mag; nz /= mag; }
     
-    const speed = PLAYER_SPEED * (sprint ? SPRINT_MUL : 1);
+    // Nếu đang lấy đà thì đi chậm lại
+    let speed = PLAYER_SPEED * (sprint ? SPRINT_MUL : 1);
+    if (charging) speed *= 0.3;
+
     p.x += nx * speed * dt;
     p.z += nz * speed * dt;
     p.isRunning = mag > 0.1;
@@ -93,34 +95,33 @@ function updatePlayers(dt) {
     
     if (p.isRunning) p.ry = Math.atan2(nx, nz);
     
-    // === BÓNG DÍNH CHÂN ===
+    // Bóng dính chân
     const dx = state.ball.x - p.x;
     const dz = state.ball.z - p.z;
     const distToBall = Math.hypot(dx, dz);
     
-    // Nếu bóng ở gần chân (trong bán kính 3.5m) và bóng đang ở dưới đất
     if (distToBall < DRIBBLE_DIST && state.ball.y < 2) {
-      // Vị trí đặt bóng trước mặt nhân vật
       const targetX = p.x + Math.sin(p.ry) * 1.8;
       const targetZ = p.z + Math.cos(p.ry) * 1.8;
-      
-      // Kéo bóng về vị trí trước mặt mượt mà
       state.ball.x += (targetX - state.ball.x) * 10 * dt;
       state.ball.z += (targetZ - state.ball.z) * 10 * dt;
-      
-      // Triệt tiêu vận tốc bóng để không bị trôi
       state.ball.vx *= 0.5;
       state.ball.vz *= 0.5;
     }
     
-    // Sút
-    if (p.input.kick && distToBall < DRIBBLE_DIST + 1) {
+    // Xử lý sút
+    if (p.input.kick && distToBall < DRIBBLE_DIST + 1.5) {
       const kx = Math.sin(p.ry);
       const kz = Math.cos(p.ry);
-      state.ball.vx = kx * 35; // Lực sút mạnh hơn
-      state.ball.vz = kz * 35;
-      state.ball.vy = 8;
-      p.kickAnim = 0.3; // Kích hoạt animation sút
+      
+      // Lấy lực từ client (mặc định 1 nếu không có)
+      const power = p.input.power || 1; 
+      
+      state.ball.vx = kx * 20 * power; 
+      state.ball.vz = kz * 20 * power;
+      state.ball.vy = 5 + (power * 3);
+      
+      p.kickAnim = 0.3;
       p.input.kick = false;
     }
     
@@ -128,19 +129,16 @@ function updatePlayers(dt) {
   }
 }
 
+// ... (Giữ nguyên các hàm updateBall, checkGoals, resetBall, broadcastState, clamp như cũ)
 function updateBall(dt) {
   const b = state.ball;
-  b.vy -= 25 * dt; // Trọng lực
-  b.x += b.vx * dt;
-  b.y += b.vy * dt;
-  b.z += b.vz * dt;
+  b.vy -= 25 * dt;
+  b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
   
   if (b.y <= BALL_RADIUS) {
     b.y = BALL_RADIUS;
-    if (b.vy < -2) b.vy *= -0.6;
-    else b.vy = 0;
-    b.vx *= 0.98;
-    b.vz *= 0.98;
+    if (b.vy < -2) b.vy *= -0.6; else b.vy = 0;
+    b.vx *= 0.98; b.vz *= 0.98;
   }
   
   const bx = FIELD_W/2 - BALL_RADIUS;
@@ -152,24 +150,15 @@ function updateBall(dt) {
 }
 
 function checkGoals() {
-  if (state.scoreCooldown > 0) {
-    state.scoreCooldown -= 1/TICK_RATE;
-    return;
-  }
+  if (state.scoreCooldown > 0) { state.scoreCooldown -= 1/TICK_RATE; return; }
   const b = state.ball;
-  // Khung thành to hơn (rộng 20m, cao 6m)
   const GOAL_W = 20, GOAL_H = 6;
   
   if (b.z < -FIELD_H/2 + 3 && Math.abs(b.x) < GOAL_W/2 && b.y < GOAL_H) {
-    state.scores.blue++;
-    resetBall();
-    state.scoreCooldown = 2;
+    state.scores.blue++; resetBall(); state.scoreCooldown = 2;
     io.emit('goal', { team: 'blue', scores: state.scores });
-  }
-  else if (b.z > FIELD_H/2 - 3 && Math.abs(b.x) < GOAL_W/2 && b.y < GOAL_H) {
-    state.scores.red++;
-    resetBall();
-    state.scoreCooldown = 2;
+  } else if (b.z > FIELD_H/2 - 3 && Math.abs(b.x) < GOAL_W/2 && b.y < GOAL_H) {
+    state.scores.red++; resetBall(); state.scoreCooldown = 2;
     io.emit('goal', { team: 'red', scores: state.scores });
   }
 }
