@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
@@ -6,299 +6,347 @@
 <title>⚽ 3D Football Online</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-tap-highlight-color:transparent; }
-  html, body { width:100%; height:100%; overflow:hidden; background:#111; font-family:sans-serif; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#87ceeb; font-family:sans-serif; }
   canvas { display:block; }
   
-  #ui {
-    position:fixed; top:10px; left:50%; transform:translateX(-50%);
-    color:#fff; font-size:22px; font-weight:bold;
-    background:rgba(0,0,0,0.6); padding:8px 24px; border-radius:20px;
-    text-shadow:1px 1px 3px #000; z-index:10; white-space:nowrap;
+  /* UI Chung */
+  #ui-score {
+    position:fixed; top:15px; left:50%; transform:translateX(-50%);
+    color:#fff; font-size:28px; font-weight:bold;
+    background:rgba(0,0,0,0.7); padding:10px 30px; border-radius:30px;
+    text-shadow:2px 2px 0 #000; z-index:10; white-space:nowrap;
   }
   #teamInfo {
-    position:fixed; top:10px; left:10px;
-    color:#fff; font-size:14px; background:rgba(0,0,0,0.6);
-    padding:6px 14px; border-radius:12px; z-index:10;
+    position:fixed; top:15px; left:15px; color:#fff; font-size:16px;
+    background:rgba(0,0,0,0.6); padding:8px 16px; border-radius:15px; z-index:10;
   }
+
+  /* Bảng hướng dẫn kéo thả */
+  #guide-btn {
+    position:fixed; top:15px; right:15px; width:50px; height:50px;
+    border-radius:50%; background:#f1c40f; color:#000; font-size:24px; font-weight:bold;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:20;
+    box-shadow:0 4px 10px rgba(0,0,0,0.3); border:2px solid #fff;
+  }
+  #guide-panel {
+    position:fixed; top:80px; right:15px; width:300px;
+    background:rgba(20,20,20,0.95); color:#fff; padding:20px; border-radius:15px;
+    border:2px solid #444; z-index:19; display:none; cursor:move;
+    box-shadow:0 10px 30px rgba(0,0,0,0.5);
+  }
+  #guide-panel h3 { margin-bottom:10px; color:#f1c40f; text-align:center; }
+  #guide-panel p { font-size:14px; line-height:1.6; margin-bottom:8px; }
   
-  /* Mobile */
+  /* Mobile Controls */
   #joystick {
-    position:fixed; bottom:30px; left:30px;
-    width:140px; height:140px;
-    background:rgba(255,255,255,0.15);
-    border:2px solid rgba(255,255,255,0.4);
-    border-radius:50%;
-    touch-action:none;
-    display:none;
+    position:fixed; bottom:40px; left:40px; width:150px; height:150px;
+    background:rgba(255,255,255,0.2); border:3px solid rgba(255,255,255,0.5);
+    border-radius:50%; touch-action:none; display:none; z-index:10;
   }
   #stick {
-    position:absolute; top:50%; left:50%;
-    width:60px; height:60px; margin:-30px 0 0 -30px;
-    background:rgba(255,255,255,0.7);
-    border-radius:50%;
+    position:absolute; top:50%; left:50%; width:70px; height:70px;
+    margin:-35px 0 0 -35px; background:rgba(255,255,255,0.8);
+    border-radius:50%; box-shadow:0 4px 10px rgba(0,0,0,0.3);
   }
   #actions {
-    position:fixed; bottom:30px; right:30px;
-    display:none; flex-direction:column; gap:12px;
+    position:fixed; bottom:40px; right:40px; display:none; flex-direction:column; gap:15px; z-index:10;
   }
   .btn {
-    width:80px; height:80px; border-radius:50%;
-    background:rgba(0,150,255,0.6);
-    border:2px solid rgba(255,255,255,0.7);
-    color:#fff; font-size:14px; font-weight:bold;
-    touch-action:none;
+    width:90px; height:90px; border-radius:50%;
+    background:rgba(52, 152, 219, 0.8); border:3px solid #fff;
+    color:#fff; font-size:16px; font-weight:bold; touch-action:none;
+    box-shadow:0 4px 10px rgba(0,0,0,0.3);
   }
-  .btn:active { background:rgba(0,200,255,0.9); transform:scale(0.95); }
-  #kickBtn { background:rgba(255,80,80,0.6); }
-  #kickBtn:active { background:rgba(255,120,120,0.9); }
-  
-  #hint {
-    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
-    color:#aaa; font-size:13px; text-align:center;
-  }
-  
-  #loading {
-    position:fixed; inset:0; background:#111; color:#fff;
-    display:flex; align-items:center; justify-content:center;
-    font-size:24px; z-index:100; flex-direction:column; gap:16px;
-  }
-  
+  .btn:active { transform:scale(0.9); }
+  #kickBtn { background:rgba(231, 76, 60, 0.8); }
+
+  /* Goal Flash */
   #goalFlash {
     position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
-    font-size:72px; font-weight:bold; color:#fff; text-shadow:0 0 20px #ffcc00;
+    font-size:100px; font-weight:bold; color:#fff; text-shadow:0 0 30px #f1c40f;
     pointer-events:none; opacity:0; transition:opacity 0.3s; z-index:50;
+    font-family:Impact, sans-serif; letter-spacing:5px;
   }
-  
+
   @media (max-width: 768px) {
-    #joystick { display:block; }
-    #actions { display:flex; }
-    #hint { display:none; }
-    #ui { font-size:16px; }
+    #joystick, #actions { display:flex; }
+    #ui-score { font-size:20px; top:10px; }
+    #guide-panel { width:250px; }
   }
 </style>
 </head>
 <body>
 
-<div id="loading">⚽ Đang kết nối server...</div>
-<div id="ui">⚽ 0 - 0</div>
+<div id="ui-score">⚽ 0 - 0</div>
 <div id="teamInfo">Team: —</div>
 <div id="goalFlash">GOAL!</div>
 
+<!-- Bảng hướng dẫn -->
+<div id="guide-btn">?</div>
+<div id="guide-panel">
+  <h3>Hướng Dẫn Chơi</h3>
+  <p>🎮 <b>Di chuyển:</b> WASD / Phím mũi tên (PC) hoặc Joystick (Mobile)</p>
+  <p>⚡ <b>Chạy nhanh:</b> Giữ SHIFT (PC)</p>
+  <p>⚽ <b>Sút bóng:</b> Phím SPACE (PC) hoặc nút ĐỎ (Mobile)</p>
+  <p>🖱️ <b>Kéo thả:</b> Bạn có thể giữ chuột vào bảng này để di chuyển nó đi chỗ khác.</p>
+</div>
+
+<!-- Mobile Controls -->
 <div id="joystick"><div id="stick"></div></div>
 <div id="actions">
   <button class="btn" id="kickBtn">SÚT</button>
   <button class="btn" id="sprintBtn">CHẠY</button>
 </div>
 
-<div id="hint">WASD / Mũi tên di chuyển · SPACE sút · SHIFT chạy nhanh</div>
-
 <script src="/socket.io/socket.io.js"></script>
 <script type="importmap">
-{
-  "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
-  }
-}
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
 </script>
 
 <script type="module">
 import * as THREE from 'three';
 
-// ============ SOCKET ============
 const socket = io();
 let myId = null;
 let gameState = null;
-let teamColors = { red: 0xff3333, blue: 0x3366ff };
 
 // ============ SCENE ============
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.Fog(0x87ceeb, 80, 160);
+scene.fog = new THREE.Fog(0x87ceeb, 150, 350);
 
-const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 500);
-camera.position.set(0, 20, 25);
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 1000);
+camera.position.set(0, 40, 50);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-// ============ LIGHTS ============
-scene.add(new THREE.HemisphereLight(0xffffff, 0x446644, 0.9));
-const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-sun.position.set(20, 40, 20);
+// Lights
+scene.add(new THREE.HemisphereLight(0xffffff, 0x446644, 0.8));
+const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+sun.position.set(60, 100, 60);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -50;
-sun.shadow.camera.right = 50;
-sun.shadow.camera.top = 50;
-sun.shadow.camera.bottom = -50;
+sun.shadow.camera.left = -150;
+sun.shadow.camera.right = 150;
+sun.shadow.camera.top = 150;
+sun.shadow.camera.bottom = -150;
 scene.add(sun);
 
-// ============ FIELD (giống hệt bản AI) ============
-const FIELD_W = 44, FIELD_H = 60;
+// ============ SÂN ĐẤU (X10) ============
+const FIELD_W = 120, FIELD_H = 180;
 
+// Mặt cỏ chính
 const grass = new THREE.Mesh(
   new THREE.PlaneGeometry(FIELD_W, FIELD_H),
-  new THREE.MeshLambertMaterial({ color: 0x3a9d3a })
+  new THREE.MeshStandardMaterial({ color: 0x27ae60, roughness: 0.8 })
 );
 grass.rotation.x = -Math.PI/2;
 grass.receiveShadow = true;
 scene.add(grass);
 
-for (let i = 0; i < 12; i++) {
+// Sọc cỏ
+for (let i = 0; i < 16; i++) {
   if (i % 2 === 0) continue;
   const stripe = new THREE.Mesh(
-    new THREE.PlaneGeometry(FIELD_W, FIELD_H/12),
-    new THREE.MeshLambertMaterial({ color: 0x2e8a2e })
+    new THREE.PlaneGeometry(FIELD_W, FIELD_H/16),
+    new THREE.MeshStandardMaterial({ color: 0x229954 })
   );
   stripe.rotation.x = -Math.PI/2;
-  stripe.position.z = -FIELD_H/2 + (i + 0.5) * (FIELD_H/12);
-  stripe.position.y = 0.01;
+  stripe.position.z = -FIELD_H/2 + (i + 0.5) * (FIELD_H/16);
+  stripe.position.y = 0.02;
+  stripe.receiveShadow = true;
   scene.add(stripe);
 }
 
+// Khán đài (Tường bao quanh)
+const wallMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9 });
+function addWall(w, h, d, x, z) {
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
+  wall.position.set(x, h/2, z);
+  wall.castShadow = true; wall.receiveShadow = true;
+  scene.add(wall);
+}
+addWall(FIELD_W + 10, 5, 2, 0, -FIELD_H/2 - 3); // Bắc
+addWall(FIELD_W + 10, 5, 2, 0, FIELD_H/2 + 3);  // Nam
+addWall(2, 5, FIELD_H + 10, -FIELD_W/2 - 3, 0); // Tây
+addWall(2, 5, FIELD_H + 10, FIELD_W/2 + 3, 0);  // Đông
+
+// Đường kẻ sân
 const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 function addLine(w, h, x, z) {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), lineMat);
   m.rotation.x = -Math.PI/2;
-  m.position.set(x, 0.02, z);
+  m.position.set(x, 0.05, z);
   scene.add(m);
 }
-addLine(FIELD_W, 0.2, 0, -FIELD_H/2);
-addLine(FIELD_W, 0.2, 0, FIELD_H/2);
-addLine(0.2, FIELD_H, -FIELD_W/2, 0);
-addLine(0.2, FIELD_H, FIELD_W/2, 0);
-addLine(FIELD_W, 0.2, 0, 0);
+addLine(FIELD_W, 0.5, 0, -FIELD_H/2); // Biên trên
+addLine(FIELD_W, 0.5, 0, FIELD_H/2);  // Biên dưới
+addLine(0.5, FIELD_H, -FIELD_W/2, 0); // Biên trái
+addLine(0.5, FIELD_H, FIELD_W/2, 0);  // Biên phải
+addLine(FIELD_W, 0.5, 0, 0);          // Giữa sân
 
-const circle = new THREE.Mesh(new THREE.RingGeometry(5.5, 5.7, 48), lineMat);
+// Vòng tròn giữa sân
+const circle = new THREE.Mesh(new THREE.RingGeometry(15, 15.5, 64), lineMat);
 circle.rotation.x = -Math.PI/2;
-circle.position.y = 0.02;
+circle.position.y = 0.05;
 scene.add(circle);
 
-// Khung thành
+// Vạch cấm địa (Vòng cấm)
+function addPenaltyArea(sign) {
+  const z = sign * (FIELD_H/2 - 25);
+  addLine(60, 0.5, 0, z); // Vạch ngang
+  addLine(0.5, 25, -30, sign * (FIELD_H/2 - 12.5)); // Vạch dọc trái
+  addLine(0.5, 25, 30, sign * (FIELD_H/2 - 12.5));  // Vạch dọc phải
+}
+addPenaltyArea(-1); // Khung thành trên
+addPenaltyArea(1);  // Khung thành dưới
+
+// Khung thành (To hơn)
 function makeGoal(z, color) {
   const g = new THREE.Group();
-  const m = new THREE.MeshLambertMaterial({ color });
-  const w = 10, h = 3;
-  const bar = new THREE.CylinderGeometry(0.15, 0.15, h, 8);
+  const postMat = new THREE.MeshStandardMaterial({ color, metalness: 0.5, roughness: 0.5 });
+  const w = 20, h = 6, thick = 0.4;
   
+  // Cột dọc
   [-w/2, w/2].forEach(x => {
-    const b = new THREE.Mesh(bar, m);
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(thick, thick, h, 16), postMat);
     b.position.set(x, h/2, 0);
     b.castShadow = true;
     g.add(b);
   });
-  const cross = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, w, 8), m);
+  // Xà ngang
+  const cross = new THREE.Mesh(new THREE.CylinderGeometry(thick, thick, w, 16), postMat);
   cross.rotation.z = Math.PI/2;
   cross.position.y = h;
   cross.castShadow = true;
   g.add(cross);
+
+  // Lưới (Net)
+  const netMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent:true, opacity:0.2, side: THREE.DoubleSide, wireframe: true });
+  const netBack = new THREE.Mesh(new THREE.PlaneGeometry(w, h, 20, 6), netMat);
+  netBack.position.set(0, h/2, z < 0 ? -3 : 3);
+  g.add(netBack);
   
   g.position.z = z;
   scene.add(g);
 }
-makeGoal(-FIELD_H/2 + 0.5, 0x3366ff); // khung xanh (team blue ghi)
-makeGoal(FIELD_H/2 - 0.5, 0xff3333);  // khung đỏ (team red ghi)
+makeGoal(-FIELD_H/2 + 1, 0xe74c3c); // Khung Đỏ
+makeGoal(FIELD_H/2 - 1, 0x3498db);  // Khung Xanh
 
-// ============ BALL ============
+// ============ QUẢ BÓNG ============
 const ball = new THREE.Mesh(
-  new THREE.SphereGeometry(0.6, 24, 24),
-  new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 })
+  new THREE.SphereGeometry(1, 32, 32),
+  new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 })
 );
 ball.castShadow = true;
 scene.add(ball);
 
-// ============ PLAYER MODEL ============
+// ============ MINECRAFT PLAYER MODEL ============
 function createPlayerModel(color) {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.5, 1.0, 4, 12),
-    new THREE.MeshStandardMaterial({ color })
-  );
-  body.position.y = 1.3;
-  body.castShadow = true;
-  g.add(body);
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xffcc99 }); // Màu da
+  const bodyMat = new THREE.MeshStandardMaterial({ color }); // Màu áo
   
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.4, 16, 16),
-    new THREE.MeshStandardMaterial({ color: 0xffcc99 })
-  );
-  head.position.y = 2.5;
+  // Đầu (Hộp vuông)
+  const head = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), skinMat);
+  head.position.y = 3;
   head.castShadow = true;
   g.add(head);
-  
-  const legMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-  [-0.2, 0.2].forEach(x => {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.9, 8), legMat);
-    leg.position.set(x, 0.45, 0);
-    leg.castShadow = true;
-    g.add(leg);
-  });
-  
-  // Name label
-  const canvas = document.createElement('canvas');
-  canvas.width = 256; canvas.height = 64;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = 'rgba(0,0,0,0.7)';
-  ctx.fillRect(0,0,256,64);
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 32px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('Player', 128, 32);
-  const tex = new THREE.CanvasTexture(canvas);
-  const label = new THREE.Mesh(
-    new THREE.PlaneGeometry(3, 0.75),
-    new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide })
-  );
-  label.position.y = 3.5;
-  label.name = 'label';
-  g.add(label);
-  
+
+  // Thân (Hộp)
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.6, 0.8), bodyMat);
+  body.position.y = 1.6;
+  body.castShadow = true;
+  g.add(body);
+
+  // Tay Trái & Phải
+  const armGeo = new THREE.BoxGeometry(0.5, 1.5, 0.5);
+  const leftArm = new THREE.Mesh(armGeo, skinMat);
+  leftArm.position.set(-0.95, 1.7, 0);
+  leftArm.castShadow = true;
+  g.add(leftArm);
+
+  const rightArm = new THREE.Mesh(armGeo, skinMat);
+  rightArm.position.set(0.95, 1.7, 0);
+  rightArm.castShadow = true;
+  g.add(rightArm);
+
+  // Chân Trái & Phải
+  const legGeo = new THREE.BoxGeometry(0.6, 1.5, 0.6);
+  const leftLeg = new THREE.Mesh(legGeo, new THREE.MeshStandardMaterial({color: 0x2c3e50}));
+  leftLeg.position.set(-0.4, 0.5, 0);
+  leftLeg.castShadow = true;
+  g.add(leftLeg);
+
+  const rightLeg = new THREE.Mesh(legGeo, new THREE.MeshStandardMaterial({color: 0x2c3e50}));
+  rightLeg.position.set(0.4, 0.5, 0);
+  rightLeg.castShadow = true;
+  g.add(rightLeg);
+
+  // Lưu các bộ phận để làm animation
+  g.userData.parts = { leftArm, rightArm, leftLeg, rightLeg };
+
   return g;
 }
 
-const playerModels = {}; // id -> Group
+const playerModels = {};
 
-// ============ INPUT ============
+// ============ UI KÉO THẢ ============
+const guideBtn = document.getElementById('guide-btn');
+const guidePanel = document.getElementById('guide-panel');
+guideBtn.addEventListener('click', () => {
+  guidePanel.style.display = guidePanel.style.display === 'block' ? 'none' : 'block';
+});
+
+// Code kéo thả bảng
+let isDragging = false, dragX = 0, dragY = 0;
+guidePanel.addEventListener('mousedown', (e) => {
+  isDragging = true;
+  dragX = e.clientX - guidePanel.offsetLeft;
+  dragY = e.clientY - guidePanel.offsetTop;
+});
+addEventListener('mousemove', (e) => {
+  if (isDragging) {
+    guidePanel.style.left = (e.clientX - dragX) + 'px';
+    guidePanel.style.top = (e.clientY - dragY) + 'px';
+    guidePanel.style.right = 'auto'; // Xoá thuộc tính right để kéo mượt
+  }
+});
+addEventListener('mouseup', () => isDragging = false);
+
+// ============ INPUT BÀN PHÍM / CẢM ỨNG ============
 const keys = {};
 addEventListener('keydown', e => keys[e.code] = true);
 addEventListener('keyup', e => keys[e.code] = false);
 
-// Joystick
+// Joystick logic...
 const joyEl = document.getElementById('joystick');
 const stickEl = document.getElementById('stick');
 let joyActive = false, joyX = 0, joyY = 0, joyId = null;
-
 function joyStart(e) {
   const t = e.changedTouches ? e.changedTouches[0] : e;
-  joyId = t.identifier ?? 'mouse';
-  joyActive = true;
-  joyMove(e);
-  e.preventDefault();
+  joyId = t.identifier ?? 'mouse'; joyActive = true; joyMove(e); e.preventDefault();
 }
 function joyMove(e) {
   if (!joyActive) return;
-  let t = e.changedTouches
-    ? Array.from(e.changedTouches).find(tt => tt.identifier === joyId)
-    : e;
+  let t = e.changedTouches ? Array.from(e.changedTouches).find(tt => tt.identifier === joyId) : e;
   if (!t) return;
   const r = joyEl.getBoundingClientRect();
   let dx = t.clientX - (r.left + r.width/2);
   let dy = t.clientY - (r.top + r.height/2);
-  const max = r.width/2;
-  const d = Math.hypot(dx, dy);
+  const max = r.width/2; const d = Math.hypot(dx, dy);
   if (d > max) { dx = dx/d*max; dy = dy/d*max; }
-  joyX = dx / max;
-  joyY = dy / max;
+  joyX = dx / max; joyY = dy / max;
   stickEl.style.transform = `translate(${dx}px, ${dy}px)`;
   e.preventDefault();
 }
 function joyEnd(e) {
-  joyActive = false; joyX = 0; joyY = 0;
-  stickEl.style.transform = '';
+  joyActive = false; joyX = 0; joyY = 0; stickEl.style.transform = '';
   e.preventDefault();
 }
 joyEl.addEventListener('touchstart', joyStart, { passive:false });
@@ -317,15 +365,12 @@ function bindBtn(el, on, off) {
 bindBtn(document.getElementById('kickBtn'), () => kickPressed = true, () => kickPressed = false);
 bindBtn(document.getElementById('sprintBtn'), () => sprintPressed = true, () => sprintPressed = false);
 
-// ============ SOCKET EVENTS ============
+// ============ SOCKET LOGIC ============
 socket.on('init', (data) => {
   myId = data.id;
   gameState = data.state;
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('teamInfo').textContent = 
-    `Bạn: ${data.state.players[myId].team.toUpperCase()} · Online: ${Object.keys(data.state.players).length}`;
+  document.getElementById('teamInfo').textContent = `Bạn: ${data.state.players[myId].team.toUpperCase()}`;
   
-  // Tạo model cho tất cả player hiện có
   for (const id in data.state.players) {
     if (id === myId) continue;
     addPlayerModel(id, data.state.players[id]);
@@ -334,7 +379,6 @@ socket.on('init', (data) => {
 
 socket.on('playerJoined', ({ id, player }) => {
   addPlayerModel(id, player);
-  updateOnlineCount();
 });
 
 socket.on('playerLeft', (id) => {
@@ -342,85 +386,81 @@ socket.on('playerLeft', (id) => {
     scene.remove(playerModels[id]);
     delete playerModels[id];
   }
-  updateOnlineCount();
 });
 
 socket.on('state', (s) => {
   gameState = s;
-  
-  // Update ball
   ball.position.set(s.ball.x, s.ball.y, s.ball.z);
   
-  // Update players
   for (const id in s.players) {
     if (id === myId) continue;
     const p = s.players[id];
     if (!playerModels[id]) addPlayerModel(id, p);
     const model = playerModels[id];
-    // Smooth lerp
-    model.position.lerp(new THREE.Vector3(p.x, p.y, p.z), 0.25);
+    
+    // Cập nhật vị trí mượt mà
+    model.position.lerp(new THREE.Vector3(p.x, p.y, p.z), 0.3);
     model.rotation.y = p.ry;
-    // Update label text
-    const label = model.getObjectByName('label');
-    if (label && label.userData.name !== p.name) {
-      updateLabel(label, p.name);
-      label.userData.name = p.name;
-    }
+
+    // ANIMATION
+    animateModel(model, p.isRunning, p.kickAnim > 0);
   }
   
-  // Scores UI
-  document.getElementById('ui').textContent = `⚽ ${s.scores.red} - ${s.scores.blue}`;
+  document.getElementById('ui-score').textContent = `⚽ ${s.scores.red} - ${s.scores.blue}`;
 });
 
-socket.on('goal', ({ team, scores }) => {
+socket.on('goal', ({ team }) => {
   const flash = document.getElementById('goalFlash');
   flash.textContent = team === 'red' ? '🔴 GOAL RED!' : '🔵 GOAL BLUE!';
   flash.style.opacity = 1;
-  setTimeout(() => flash.style.opacity = 0, 1200);
+  setTimeout(() => flash.style.opacity = 0, 1500);
 });
 
 function addPlayerModel(id, data) {
   const model = createPlayerModel(data.color);
   model.position.set(data.x, data.y, data.z);
-  model.rotation.y = data.ry;
-  const label = model.getObjectByName('label');
-  updateLabel(label, data.name);
-  label.userData.name = data.name;
   scene.add(model);
   playerModels[id] = model;
 }
 
-function updateLabel(label, text) {
-  const canvas = label.material.map.image;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, 256, 64);
-  ctx.fillStyle = 'rgba(0,0,0,0.7)';
-  ctx.fillRect(0, 0, 256, 64);
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 28px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, 128, 32);
-  label.material.map.needsUpdate = true;
+// ANIMATION LOGIC (Minecraft Style)
+let animTime = 0;
+function animateModel(model, isRunning, isKicking) {
+  const parts = model.userData.parts;
+  if (!parts) return;
+
+  if (isKicking) {
+    // Tư thế sút: Chân phải vung mạnh về trước, tay trái giơ lên
+    parts.rightLeg.rotation.x = -1.5;
+    parts.leftLeg.rotation.x = 0.5;
+    parts.leftArm.rotation.x = 1;
+    parts.rightArm.rotation.x = -1;
+  } else if (isRunning) {
+    // Tư thế chạy: Vung tay chân
+    animTime += 0.2;
+    const swing = Math.sin(animTime) * 0.8;
+    parts.leftLeg.rotation.x = swing;
+    parts.rightLeg.rotation.x = -swing;
+    parts.leftArm.rotation.x = -swing;
+    parts.rightArm.rotation.x = swing;
+  } else {
+    // Đứng im: Trả về tư thế ban đầu
+    parts.leftLeg.rotation.x = 0;
+    parts.rightLeg.rotation.x = 0;
+    parts.leftArm.rotation.x = 0;
+    parts.rightArm.rotation.x = 0;
+  }
 }
 
-function updateOnlineCount() {
-  const count = gameState ? Object.keys(gameState.players).length : 1;
-  document.getElementById('teamInfo').textContent = 
-    `Bạn: ${gameState.players[myId].team.toUpperCase()} · Online: ${count}`;
-}
-
-// ============ INPUT SEND LOOP (20Hz) ============
+// Gửi Input lên Server
 setInterval(() => {
   if (!socket.connected) return;
-  
   let mx = 0, mz = 0;
   if (keys['KeyW'] || keys['ArrowUp']) mz -= 1;
   if (keys['KeyS'] || keys['ArrowDown']) mz += 1;
   if (keys['KeyA'] || keys['ArrowLeft']) mx -= 1;
   if (keys['KeyD'] || keys['ArrowRight']) mx += 1;
-  mx += joyX;
-  mz += joyY;
+  mx += joyX; mz += joyY;
   
   socket.emit('input', {
     mx, mz,
@@ -430,28 +470,29 @@ setInterval(() => {
   kickPressed = false;
 }, 50);
 
-// ============ RENDER LOOP ============
+// ============ GAME LOOP ============
 function animate() {
   requestAnimationFrame(animate);
   
   if (gameState && gameState.players[myId]) {
     const me = gameState.players[myId];
-    // Camera follow
-    const target = new THREE.Vector3(me.x * 0.4, 20, me.z + 22);
-    camera.position.lerp(target, 0.08);
-    camera.lookAt(me.x * 0.3, 0, me.z - 5);
     
-    // Update own model
+    // Camera bám theo Player
+    const target = new THREE.Vector3(me.x * 0.5, 35, me.z + 40);
+    camera.position.lerp(target, 0.05);
+    camera.lookAt(me.x * 0.5, 0, me.z - 10);
+    
+    // Cập nhật model của chính mình
     if (!playerModels[myId]) {
       const m = createPlayerModel(me.color);
       m.position.set(me.x, me.y, me.z);
-      updateLabel(m.getObjectByName('label'), me.name + ' (Bạn)');
       scene.add(m);
       playerModels[myId] = m;
     } else {
       const m = playerModels[myId];
-      m.position.lerp(new THREE.Vector3(me.x, me.y, me.z), 0.4);
+      m.position.lerp(new THREE.Vector3(me.x, me.y, me.z), 0.5);
       m.rotation.y = me.ry;
+      animateModel(m, me.isRunning, me.kickAnim > 0);
     }
   }
   
