@@ -1,3 +1,5 @@
+// Thay thế toàn bộ file public/index.html:
+
 <!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -9,7 +11,6 @@
   html, body { width:100%; height:100%; overflow:hidden; background:#87ceeb; font-family:sans-serif; }
   canvas { display:block; }
   
-  /* UI Chung */
   #ui-score {
     position:fixed; top:15px; left:50%; transform:translateX(-50%);
     color:#fff; font-size:28px; font-weight:bold;
@@ -21,7 +22,7 @@
     background:rgba(0,0,0,0.6); padding:8px 16px; border-radius:15px; z-index:10;
   }
 
-  /* Bảng hướng dẫn kéo thả */
+  /* Bảng hướng dẫn & Nút kéo thả */
   #guide-btn {
     position:fixed; top:15px; right:15px; width:50px; height:50px;
     border-radius:50%; background:#f1c40f; color:#000; font-size:24px; font-weight:bold;
@@ -36,6 +37,18 @@
   }
   #guide-panel h3 { margin-bottom:10px; color:#f1c40f; text-align:center; }
   #guide-panel p { font-size:14px; line-height:1.6; margin-bottom:8px; }
+  
+  /* Thanh lực sút */
+  #power-bar-container {
+    position:fixed; bottom:40px; left:50%; transform:translateX(-50%);
+    width:250px; height:20px; background:rgba(0,0,0,0.6);
+    border:2px solid #fff; border-radius:10px; z-index:15;
+    display:none; overflow:hidden;
+  }
+  #power-bar {
+    width:0%; height:100%; background:linear-gradient(90deg, #2ecc71, #f1c40f, #e74c3c);
+    transition:width 0.05s;
+  }
   
   /* Mobile Controls */
   #joystick {
@@ -60,7 +73,6 @@
   .btn:active { transform:scale(0.9); }
   #kickBtn { background:rgba(231, 76, 60, 0.8); }
 
-  /* Goal Flash */
   #goalFlash {
     position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
     font-size:100px; font-weight:bold; color:#fff; text-shadow:0 0 30px #f1c40f;
@@ -70,8 +82,8 @@
 
   @media (max-width: 768px) {
     #joystick, #actions { display:flex; }
-    #ui-score { font-size:20px; top:10px; }
-    #guide-panel { width:250px; }
+    #ui-score { font-size:20px; }
+    #power-bar-container { width:180px; bottom:150px; }
   }
 </style>
 </head>
@@ -81,20 +93,19 @@
 <div id="teamInfo">Team: —</div>
 <div id="goalFlash">GOAL!</div>
 
-<!-- Bảng hướng dẫn -->
 <div id="guide-btn">?</div>
 <div id="guide-panel">
   <h3>Hướng Dẫn Chơi</h3>
   <p>🎮 <b>Di chuyển:</b> WASD / Phím mũi tên (PC) hoặc Joystick (Mobile)</p>
-  <p>⚡ <b>Chạy nhanh:</b> Giữ SHIFT (PC)</p>
-  <p>⚽ <b>Sút bóng:</b> Phím SPACE (PC) hoặc nút ĐỎ (Mobile)</p>
-  <p>🖱️ <b>Kéo thả:</b> Bạn có thể giữ chuột vào bảng này để di chuyển nó đi chỗ khác.</p>
+  <p>⚡ <b>Chạy nhanh:</b> Giữ SHIFT (PC) hoặc nút Xanh (Mobile)</p>
+  <p>⚽ <b>Sút bóng:</b> Nhấn giữ SPACE (PC) hoặc nút ĐỎ (Mobile) để tích lực, thả ra để sút!</p>
 </div>
 
-<!-- Mobile Controls -->
+<div id="power-bar-container"><div id="power-bar"></div></div>
+
 <div id="joystick"><div id="stick"></div></div>
 <div id="actions">
-  <button class="btn" id="kickBtn">SÚT</button>
+  <button class="btn" id="kickBtn">GIỮ ĐỂ SÚT</button>
   <button class="btn" id="sprintBtn">CHẠY</button>
 </div>
 
@@ -110,7 +121,6 @@ const socket = io();
 let myId = null;
 let gameState = null;
 
-// ============ SCENE ============
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 scene.fog = new THREE.Fog(0x87ceeb, 150, 350);
@@ -125,185 +135,116 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-// Lights
 scene.add(new THREE.HemisphereLight(0xffffff, 0x446644, 0.8));
 const sun = new THREE.DirectionalLight(0xffffff, 1.5);
 sun.position.set(60, 100, 60);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -150;
-sun.shadow.camera.right = 150;
-sun.shadow.camera.top = 150;
-sun.shadow.camera.bottom = -150;
+sun.shadow.camera.left = -150; sun.shadow.camera.right = 150;
+sun.shadow.camera.top = 150; sun.shadow.camera.bottom = -150;
 scene.add(sun);
 
-// ============ SÂN ĐẤU (X10) ============
 const FIELD_W = 120, FIELD_H = 180;
 
-// Mặt cỏ chính
-const grass = new THREE.Mesh(
-  new THREE.PlaneGeometry(FIELD_W, FIELD_H),
-  new THREE.MeshStandardMaterial({ color: 0x27ae60, roughness: 0.8 })
-);
-grass.rotation.x = -Math.PI/2;
-grass.receiveShadow = true;
-scene.add(grass);
+// Sân cỏ
+const grass = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W, FIELD_H), new THREE.MeshStandardMaterial({ color: 0x27ae60, roughness: 0.8 }));
+grass.rotation.x = -Math.PI/2; grass.receiveShadow = true; scene.add(grass);
 
-// Sọc cỏ
 for (let i = 0; i < 16; i++) {
   if (i % 2 === 0) continue;
-  const stripe = new THREE.Mesh(
-    new THREE.PlaneGeometry(FIELD_W, FIELD_H/16),
-    new THREE.MeshStandardMaterial({ color: 0x229954 })
-  );
+  const stripe = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W, FIELD_H/16), new THREE.MeshStandardMaterial({ color: 0x229954 }));
   stripe.rotation.x = -Math.PI/2;
-  stripe.position.z = -FIELD_H/2 + (i + 0.5) * (FIELD_H/16);
-  stripe.position.y = 0.02;
-  stripe.receiveShadow = true;
-  scene.add(stripe);
+  stripe.position.z = -FIELD_H/2 + (i + 0.5) * (FIELD_H/16); stripe.position.y = 0.02;
+  stripe.receiveShadow = true; scene.add(stripe);
 }
 
-// Khán đài (Tường bao quanh)
+// Tường bao
 const wallMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9 });
-function addWall(w, h, d, x, z) {
-  const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
-  wall.position.set(x, h/2, z);
-  wall.castShadow = true; wall.receiveShadow = true;
-  scene.add(wall);
-}
-addWall(FIELD_W + 10, 5, 2, 0, -FIELD_H/2 - 3); // Bắc
-addWall(FIELD_W + 10, 5, 2, 0, FIELD_H/2 + 3);  // Nam
-addWall(2, 5, FIELD_H + 10, -FIELD_W/2 - 3, 0); // Tây
-addWall(2, 5, FIELD_H + 10, FIELD_W/2 + 3, 0);  // Đông
+[[FIELD_W + 10, 5, 2, 0, -FIELD_H/2 - 3], [FIELD_W + 10, 5, 2, 0, FIELD_H/2 + 3], 
+ [2, 5, FIELD_H + 10, -FIELD_W/2 - 3, 0], [2, 5, FIELD_H + 10, FIELD_W/2 + 3, 0]].forEach(w => {
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(w[0], w[1], w[2]), wallMat);
+  wall.position.set(w[3], w[1]/2, w[4]); wall.castShadow = true; scene.add(wall);
+});
 
-// Đường kẻ sân
+// Vạch kẻ
 const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-function addLine(w, h, x, z) {
+const addLine = (w, h, x, z) => {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), lineMat);
-  m.rotation.x = -Math.PI/2;
-  m.position.set(x, 0.05, z);
-  scene.add(m);
-}
-addLine(FIELD_W, 0.5, 0, -FIELD_H/2); // Biên trên
-addLine(FIELD_W, 0.5, 0, FIELD_H/2);  // Biên dưới
-addLine(0.5, FIELD_H, -FIELD_W/2, 0); // Biên trái
-addLine(0.5, FIELD_H, FIELD_W/2, 0);  // Biên phải
-addLine(FIELD_W, 0.5, 0, 0);          // Giữa sân
+  m.rotation.x = -Math.PI/2; m.position.set(x, 0.05, z); scene.add(m);
+};
+addLine(FIELD_W, 0.5, 0, -FIELD_H/2); addLine(FIELD_W, 0.5, 0, FIELD_H/2);
+addLine(0.5, FIELD_H, -FIELD_W/2, 0); addLine(0.5, FIELD_H, FIELD_W/2, 0);
+addLine(FIELD_W, 0.5, 0, 0);
 
-// Vòng tròn giữa sân
 const circle = new THREE.Mesh(new THREE.RingGeometry(15, 15.5, 64), lineMat);
-circle.rotation.x = -Math.PI/2;
-circle.position.y = 0.05;
-scene.add(circle);
+circle.rotation.x = -Math.PI/2; circle.position.y = 0.05; scene.add(circle);
 
-// Vạch cấm địa (Vòng cấm)
-function addPenaltyArea(sign) {
-  const z = sign * (FIELD_H/2 - 25);
-  addLine(60, 0.5, 0, z); // Vạch ngang
-  addLine(0.5, 25, -30, sign * (FIELD_H/2 - 12.5)); // Vạch dọc trái
-  addLine(0.5, 25, 30, sign * (FIELD_H/2 - 12.5));  // Vạch dọc phải
-}
-addPenaltyArea(-1); // Khung thành trên
-addPenaltyArea(1);  // Khung thành dưới
-
-// Khung thành (To hơn)
+// Khung thành
 function makeGoal(z, color) {
   const g = new THREE.Group();
   const postMat = new THREE.MeshStandardMaterial({ color, metalness: 0.5, roughness: 0.5 });
   const w = 20, h = 6, thick = 0.4;
-  
-  // Cột dọc
   [-w/2, w/2].forEach(x => {
     const b = new THREE.Mesh(new THREE.CylinderGeometry(thick, thick, h, 16), postMat);
-    b.position.set(x, h/2, 0);
-    b.castShadow = true;
-    g.add(b);
+    b.position.set(x, h/2, 0); b.castShadow = true; g.add(b);
   });
-  // Xà ngang
   const cross = new THREE.Mesh(new THREE.CylinderGeometry(thick, thick, w, 16), postMat);
-  cross.rotation.z = Math.PI/2;
-  cross.position.y = h;
-  cross.castShadow = true;
-  g.add(cross);
-
-  // Lưới (Net)
+  cross.rotation.z = Math.PI/2; cross.position.y = h; cross.castShadow = true; g.add(cross);
+  
   const netMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent:true, opacity:0.2, side: THREE.DoubleSide, wireframe: true });
   const netBack = new THREE.Mesh(new THREE.PlaneGeometry(w, h, 20, 6), netMat);
-  netBack.position.set(0, h/2, z < 0 ? -3 : 3);
-  g.add(netBack);
-  
-  g.position.z = z;
-  scene.add(g);
+  netBack.position.set(0, h/2, z < 0 ? -3 : 3); g.add(netBack);
+  g.position.z = z; scene.add(g);
 }
-makeGoal(-FIELD_H/2 + 1, 0xe74c3c); // Khung Đỏ
-makeGoal(FIELD_H/2 - 1, 0x3498db);  // Khung Xanh
+makeGoal(-FIELD_H/2 + 1, 0xe74c3c);
+makeGoal(FIELD_H/2 - 1, 0x3498db);
 
-// ============ QUẢ BÓNG ============
-const ball = new THREE.Mesh(
-  new THREE.SphereGeometry(1, 32, 32),
-  new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 })
-);
-ball.castShadow = true;
-scene.add(ball);
+const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 }));
+ball.castShadow = true; scene.add(ball);
 
-// ============ MINECRAFT PLAYER MODEL ============
+// ============ MINECRAFT PLAYER (CAO HƠN) ============
 function createPlayerModel(color) {
   const g = new THREE.Group();
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0xffcc99 }); // Màu da
-  const bodyMat = new THREE.MeshStandardMaterial({ color }); // Màu áo
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xffcc99 });
+  const bodyMat = new THREE.MeshStandardMaterial({ color });
   
-  // Đầu (Hộp vuông)
+  // Đầu
   const head = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), skinMat);
-  head.position.y = 3;
-  head.castShadow = true;
-  g.add(head);
+  head.position.y = 3.6; head.castShadow = true; g.add(head);
 
-  // Thân (Hộp)
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.6, 0.8), bodyMat);
-  body.position.y = 1.6;
-  body.castShadow = true;
-  g.add(body);
+  // Thân (Dài hơn)
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.0, 0.8), bodyMat);
+  body.position.y = 2.0; body.castShadow = true; g.add(body);
 
-  // Tay Trái & Phải
-  const armGeo = new THREE.BoxGeometry(0.5, 1.5, 0.5);
+  // Tay (Dài hơn)
+  const armGeo = new THREE.BoxGeometry(0.5, 2.0, 0.5);
   const leftArm = new THREE.Mesh(armGeo, skinMat);
-  leftArm.position.set(-0.95, 1.7, 0);
-  leftArm.castShadow = true;
-  g.add(leftArm);
+  leftArm.position.set(-0.95, 2.0, 0); leftArm.castShadow = true; g.add(leftArm);
 
   const rightArm = new THREE.Mesh(armGeo, skinMat);
-  rightArm.position.set(0.95, 1.7, 0);
-  rightArm.castShadow = true;
-  g.add(rightArm);
+  rightArm.position.set(0.95, 2.0, 0); rightArm.castShadow = true; g.add(rightArm);
 
-  // Chân Trái & Phải
-  const legGeo = new THREE.BoxGeometry(0.6, 1.5, 0.6);
+  // Chân (Dài hơn)
+  const legGeo = new THREE.BoxGeometry(0.6, 2.0, 0.6);
   const leftLeg = new THREE.Mesh(legGeo, new THREE.MeshStandardMaterial({color: 0x2c3e50}));
-  leftLeg.position.set(-0.4, 0.5, 0);
-  leftLeg.castShadow = true;
-  g.add(leftLeg);
+  leftLeg.position.set(-0.4, 0.6, 0); leftLeg.castShadow = true; g.add(leftLeg);
 
   const rightLeg = new THREE.Mesh(legGeo, new THREE.MeshStandardMaterial({color: 0x2c3e50}));
-  rightLeg.position.set(0.4, 0.5, 0);
-  rightLeg.castShadow = true;
-  g.add(rightLeg);
+  rightLeg.position.set(0.4, 0.6, 0); rightLeg.castShadow = true; g.add(rightLeg);
 
-  // Lưu các bộ phận để làm animation
   g.userData.parts = { leftArm, rightArm, leftLeg, rightLeg };
-
   return g;
 }
 
 const playerModels = {};
 
-// ============ UI KÉO THẢ ============
+// UI
 const guideBtn = document.getElementById('guide-btn');
 const guidePanel = document.getElementById('guide-panel');
 guideBtn.addEventListener('click', () => {
   guidePanel.style.display = guidePanel.style.display === 'block' ? 'none' : 'block';
 });
 
-// Code kéo thả bảng
 let isDragging = false, dragX = 0, dragY = 0;
 guidePanel.addEventListener('mousedown', (e) => {
   isDragging = true;
@@ -314,47 +255,53 @@ addEventListener('mousemove', (e) => {
   if (isDragging) {
     guidePanel.style.left = (e.clientX - dragX) + 'px';
     guidePanel.style.top = (e.clientY - dragY) + 'px';
-    guidePanel.style.right = 'auto'; // Xoá thuộc tính right để kéo mượt
+    guidePanel.style.right = 'auto';
   }
 });
 addEventListener('mouseup', () => isDragging = false);
 
-// ============ INPUT BÀN PHÍM / CẢM ỨNG ============
+// ============ INPUT ============
 const keys = {};
 addEventListener('keydown', e => keys[e.code] = true);
 addEventListener('keyup', e => keys[e.code] = false);
 
-// Joystick logic...
-const joyEl = document.getElementById('joystick');
-const stickEl = document.getElementById('stick');
+// Joystick
+const joyEl = document.getElementById('joystick'), stickEl = document.getElementById('stick');
 let joyActive = false, joyX = 0, joyY = 0, joyId = null;
-function joyStart(e) {
-  const t = e.changedTouches ? e.changedTouches[0] : e;
-  joyId = t.identifier ?? 'mouse'; joyActive = true; joyMove(e); e.preventDefault();
-}
+function joyStart(e) { const t = e.changedTouches ? e.changedTouches[0] : e; joyId = t.identifier ?? 'mouse'; joyActive = true; joyMove(e); e.preventDefault(); }
 function joyMove(e) {
   if (!joyActive) return;
   let t = e.changedTouches ? Array.from(e.changedTouches).find(tt => tt.identifier === joyId) : e;
   if (!t) return;
   const r = joyEl.getBoundingClientRect();
-  let dx = t.clientX - (r.left + r.width/2);
-  let dy = t.clientY - (r.top + r.height/2);
-  const max = r.width/2; const d = Math.hypot(dx, dy);
+  let dx = t.clientX - (r.left + r.width/2), dy = t.clientY - (r.top + r.height/2);
+  const max = r.width/2, d = Math.hypot(dx, dy);
   if (d > max) { dx = dx/d*max; dy = dy/d*max; }
-  joyX = dx / max; joyY = dy / max;
-  stickEl.style.transform = `translate(${dx}px, ${dy}px)`;
-  e.preventDefault();
+  joyX = dx / max; joyY = dy / max; stickEl.style.transform = `translate(${dx}px, ${dy}px)`; e.preventDefault();
 }
-function joyEnd(e) {
-  joyActive = false; joyX = 0; joyY = 0; stickEl.style.transform = '';
-  e.preventDefault();
-}
-joyEl.addEventListener('touchstart', joyStart, { passive:false });
-joyEl.addEventListener('touchmove', joyMove, { passive:false });
-joyEl.addEventListener('touchend', joyEnd);
-joyEl.addEventListener('touchcancel', joyEnd);
+function joyEnd(e) { joyActive = false; joyX = 0; joyY = 0; stickEl.style.transform = ''; e.preventDefault(); }
+joyEl.addEventListener('touchstart', joyStart, { passive:false }); joyEl.addEventListener('touchmove', joyMove, { passive:false });
+joyEl.addEventListener('touchend', joyEnd); joyEl.addEventListener('touchcancel', joyEnd);
 
+// Nút bấm & Tích lực sút
 let kickPressed = false, sprintPressed = false;
+let isChargingKick = false, kickPower = 0;
+const powerBarContainer = document.getElementById('power-bar-container');
+const powerBar = document.getElementById('power-bar');
+
+function startKick() {
+  isChargingKick = true;
+  kickPower = 0;
+  powerBarContainer.style.display = 'block';
+  powerBar.style.width = '0%';
+}
+function releaseKick() {
+  if (!isChargingKick) return;
+  isChargingKick = false;
+  kickPressed = true; // Gửi tín hiệu sút lên server
+  powerBarContainer.style.display = 'none';
+}
+
 function bindBtn(el, on, off) {
   el.addEventListener('touchstart', e => { on(); e.preventDefault(); }, { passive:false });
   el.addEventListener('touchend', e => { off(); e.preventDefault(); });
@@ -362,50 +309,47 @@ function bindBtn(el, on, off) {
   el.addEventListener('mouseup', off);
   el.addEventListener('mouseleave', off);
 }
-bindBtn(document.getElementById('kickBtn'), () => kickPressed = true, () => kickPressed = false);
+bindBtn(document.getElementById('kickBtn'), startKick, releaseKick);
 bindBtn(document.getElementById('sprintBtn'), () => sprintPressed = true, () => sprintPressed = false);
 
-// ============ SOCKET LOGIC ============
+// Bàn phím SPACE để tích lực
+addEventListener('keydown', e => {
+  if (e.code === 'Space' && !isChargingKick) startKick();
+});
+addEventListener('keyup', e => {
+  if (e.code === 'Space' && isChargingKick) releaseKick();
+});
+
+// Cập nhật thanh lực trong game loop
+setInterval(() => {
+  if (isChargingKick) {
+    kickPower += 0.05; // Tốc độ tăng lực
+    if (kickPower > 1) kickPower = 1; // Max 100%
+    powerBar.style.width = (kickPower * 100) + '%';
+  }
+}, 30);
+
+// ============ SOCKET ============
 socket.on('init', (data) => {
-  myId = data.id;
-  gameState = data.state;
+  myId = data.id; gameState = data.state;
   document.getElementById('teamInfo').textContent = `Bạn: ${data.state.players[myId].team.toUpperCase()}`;
-  
-  for (const id in data.state.players) {
-    if (id === myId) continue;
-    addPlayerModel(id, data.state.players[id]);
-  }
+  for (const id in data.state.players) { if (id !== myId) addPlayerModel(id, data.state.players[id]); }
 });
-
-socket.on('playerJoined', ({ id, player }) => {
-  addPlayerModel(id, player);
-});
-
-socket.on('playerLeft', (id) => {
-  if (playerModels[id]) {
-    scene.remove(playerModels[id]);
-    delete playerModels[id];
-  }
-});
+socket.on('playerJoined', ({ id, player }) => addPlayerModel(id, player));
+socket.on('playerLeft', (id) => { if (playerModels[id]) { scene.remove(playerModels[id]); delete playerModels[id]; } });
 
 socket.on('state', (s) => {
   gameState = s;
   ball.position.set(s.ball.x, s.ball.y, s.ball.z);
-  
   for (const id in s.players) {
     if (id === myId) continue;
     const p = s.players[id];
     if (!playerModels[id]) addPlayerModel(id, p);
     const model = playerModels[id];
-    
-    // Cập nhật vị trí mượt mà
     model.position.lerp(new THREE.Vector3(p.x, p.y, p.z), 0.3);
     model.rotation.y = p.ry;
-
-    // ANIMATION
-    animateModel(model, p.isRunning, p.kickAnim > 0);
+    animateModel(model, p.isRunning, p.kickAnim > 0, p.input?.charging);
   }
-  
   document.getElementById('ui-score').textContent = `⚽ ${s.scores.red} - ${s.scores.blue}`;
 });
 
@@ -423,36 +367,35 @@ function addPlayerModel(id, data) {
   playerModels[id] = model;
 }
 
-// ANIMATION LOGIC (Minecraft Style)
+// Animation
 let animTime = 0;
-function animateModel(model, isRunning, isKicking) {
+function animateModel(model, isRunning, isKicking, isCharging) {
   const parts = model.userData.parts;
   if (!parts) return;
 
-  if (isKicking) {
-    // Tư thế sút: Chân phải vung mạnh về trước, tay trái giơ lên
-    parts.rightLeg.rotation.x = -1.5;
+  if (isCharging) {
+    // Tư thế lấy đà: Người hơi ngả về sau, chân phải đưa về sau
+    parts.rightLeg.rotation.x = 0.8;
+    parts.leftLeg.rotation.x = -0.3;
+    parts.leftArm.rotation.x = -0.5;
+    parts.rightArm.rotation.x = 0.5;
+  } else if (isKicking) {
+    // Tư thế sút: Vung chân phải mạnh về trước
+    parts.rightLeg.rotation.x = -1.8;
     parts.leftLeg.rotation.x = 0.5;
-    parts.leftArm.rotation.x = 1;
-    parts.rightArm.rotation.x = -1;
+    parts.leftArm.rotation.x = 1.5;
+    parts.rightArm.rotation.x = -1.5;
   } else if (isRunning) {
-    // Tư thế chạy: Vung tay chân
     animTime += 0.2;
     const swing = Math.sin(animTime) * 0.8;
-    parts.leftLeg.rotation.x = swing;
-    parts.rightLeg.rotation.x = -swing;
-    parts.leftArm.rotation.x = -swing;
-    parts.rightArm.rotation.x = swing;
+    parts.leftLeg.rotation.x = swing; parts.rightLeg.rotation.x = -swing;
+    parts.leftArm.rotation.x = -swing; parts.rightArm.rotation.x = swing;
   } else {
-    // Đứng im: Trả về tư thế ban đầu
-    parts.leftLeg.rotation.x = 0;
-    parts.rightLeg.rotation.x = 0;
-    parts.leftArm.rotation.x = 0;
-    parts.rightArm.rotation.x = 0;
+    parts.leftLeg.rotation.x = 0; parts.rightLeg.rotation.x = 0;
+    parts.leftArm.rotation.x = 0; parts.rightArm.rotation.x = 0;
   }
 }
 
-// Gửi Input lên Server
 setInterval(() => {
   if (!socket.connected) return;
   let mx = 0, mz = 0;
@@ -464,38 +407,34 @@ setInterval(() => {
   
   socket.emit('input', {
     mx, mz,
-    kick: kickPressed || keys['Space'],
-    sprint: sprintPressed || keys['ShiftLeft'] || keys['ShiftRight']
+    kick: kickPressed,
+    sprint: sprintPressed || keys['ShiftLeft'] || keys['ShiftRight'],
+    charging: isChargingKick,
+    power: kickPower // Gửi lực sút lên server
   });
-  kickPressed = false;
+  kickPressed = false; // Reset sau khi gửi
 }, 50);
 
-// ============ GAME LOOP ============
+// Game Loop
 function animate() {
   requestAnimationFrame(animate);
-  
   if (gameState && gameState.players[myId]) {
     const me = gameState.players[myId];
-    
-    // Camera bám theo Player
     const target = new THREE.Vector3(me.x * 0.5, 35, me.z + 40);
     camera.position.lerp(target, 0.05);
     camera.lookAt(me.x * 0.5, 0, me.z - 10);
     
-    // Cập nhật model của chính mình
     if (!playerModels[myId]) {
       const m = createPlayerModel(me.color);
       m.position.set(me.x, me.y, me.z);
-      scene.add(m);
-      playerModels[myId] = m;
+      scene.add(m); playerModels[myId] = m;
     } else {
       const m = playerModels[myId];
       m.position.lerp(new THREE.Vector3(me.x, me.y, me.z), 0.5);
       m.rotation.y = me.ry;
-      animateModel(m, me.isRunning, me.kickAnim > 0);
+      animateModel(m, me.isRunning, me.kickAnim > 0, isChargingKick);
     }
   }
-  
   renderer.render(scene, camera);
 }
 
